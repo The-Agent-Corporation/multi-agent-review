@@ -54,14 +54,17 @@ describe("installGsdCapability", () => {
       type: "boolean",
       default: true,
     });
-    expect(manifest.skills).toEqual(["mar-checkpoint-plan", "mar-checkpoint-implementation"]);
+    expect(manifest.skills).toEqual([]);
     expect(manifest.agents).toEqual([]);
     expect(manifest.hooks).toEqual([]);
     expect(manifest.steps).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           point: "plan:post",
-          ref: { skill: "mar-checkpoint-plan" },
+          ref: {
+            command:
+              "mar checkpoint plan --mode required --out .planning/mar-checkpoints/plan-post --phase-dir .planning",
+          },
           produces: ["MAR-CHECKPOINT-PLAN.md"],
           consumes: [],
           when: "workflow.mar_checkpoints",
@@ -69,7 +72,10 @@ describe("installGsdCapability", () => {
         }),
         expect.objectContaining({
           point: "execute:post",
-          ref: { skill: "mar-checkpoint-implementation" },
+          ref: {
+            command:
+              "mar checkpoint implementation --mode required --out .planning/mar-checkpoints/execute-post",
+          },
           produces: ["MAR-CHECKPOINT-IMPLEMENTATION.md"],
           consumes: [],
           when: "workflow.mar_checkpoints",

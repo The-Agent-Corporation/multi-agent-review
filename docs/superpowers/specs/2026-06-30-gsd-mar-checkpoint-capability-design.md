@@ -175,11 +175,9 @@ The generated capability should be project-scoped and named `mar-checkpoints`.
     mar-checkpoint-plan/SKILL.md
     mar-checkpoint-implementation/SKILL.md
     mar-checkpoint-ship/SKILL.md
-  commands/
-    router.cjs
 ```
 
-The command router is optional in the first implementation if current GSD installations cannot load third-party command families reliably. The skills can call `mar checkpoint ...` directly through Bash. The long-term preferred path is a command-family router because it lets GSD gates call `mar checkpoint verdict` deterministically without embedding shell fragments in skills.
+The manifest should use direct command refs for loop steps, for example `ref.command: "mar checkpoint plan ..."`. Current OpenGSD activation treats manifest-declared skills as runtime-surfaced capabilities; third-party overlay skills may be installed and trusted without becoming surfaced in a Claude/Codex runtime. Keeping the manifest `skills` list empty and using command refs lets the hooks activate while still shipping the `skills/` docs as human-readable fallback instructions.
 
 The manifest should register:
 

@@ -884,9 +884,11 @@ export async function installGsdCapability(opts: GsdInstallOptions): Promise<num
 - `role: "feature"`
 - `version`, `title`, `description`, `tier`, and `requires` per the OpenGSD capability envelope
 - `runtimeCompat.supported: ["*"]`
-- `skills: ["mar-checkpoint-plan", "mar-checkpoint-implementation"]`
+- `skills: []`, with the bundled `skills/` files retained as human-readable fallback docs
 - config entry `workflow.mar_checkpoints`
-- steps at `plan:post` and `execute:post` using `ref.skill`, `produces`, `consumes`, and `onError`
+- steps at `plan:post` and `execute:post` using `ref.command`, `produces`, `consumes`, and `onError`
+
+Use command refs because current OpenGSD capability activation requires manifest-declared skills to be surfaced by the target runtime. Third-party overlay skills can be installed and trusted without being surfaced, which leaves `render-hooks ... --active-cap mar-checkpoints` returning `false`.
 
 Use `onError: "halt"` in required mode and `onError: "skip"` in advisory mode until a deterministic GSD gate query is verified on the installed GSD version.
 

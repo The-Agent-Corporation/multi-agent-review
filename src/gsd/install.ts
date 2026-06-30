@@ -11,7 +11,7 @@ type GsdCheckpointMode = "required" | "advisory";
 
 interface CapabilityStep {
   point: string;
-  ref: { skill: string };
+  ref: { command: string };
   produces: string[];
   consumes: string[];
   when: string;
@@ -72,7 +72,7 @@ function buildCapability(mode: GsdCheckpointMode): CapabilityManifest {
         "*": "Requires the mar CLI on PATH for the runtime session.",
       },
     },
-    skills: ["mar-checkpoint-plan", "mar-checkpoint-implementation"],
+    skills: [],
     agents: [],
     hooks: [],
     config: {
@@ -85,7 +85,9 @@ function buildCapability(mode: GsdCheckpointMode): CapabilityManifest {
     steps: [
       {
         point: "plan:post",
-        ref: { skill: "mar-checkpoint-plan" },
+        ref: {
+          command: `mar checkpoint plan --mode ${mode} --out .planning/mar-checkpoints/plan-post --phase-dir .planning`,
+        },
         produces: ["MAR-CHECKPOINT-PLAN.md"],
         consumes: [],
         when: "workflow.mar_checkpoints",
@@ -93,7 +95,9 @@ function buildCapability(mode: GsdCheckpointMode): CapabilityManifest {
       },
       {
         point: "execute:post",
-        ref: { skill: "mar-checkpoint-implementation" },
+        ref: {
+          command: `mar checkpoint implementation --mode ${mode} --out .planning/mar-checkpoints/execute-post`,
+        },
         produces: ["MAR-CHECKPOINT-IMPLEMENTATION.md"],
         consumes: [],
         when: "workflow.mar_checkpoints",
