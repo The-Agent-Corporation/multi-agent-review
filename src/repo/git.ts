@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { execa } from "execa";
 
@@ -12,6 +12,7 @@ export interface GitRepoInfo {
 export interface AgentWorktree {
   agent: string;
   path: string;
+  strategy: "git-worktree" | "git-clone";
 }
 
 function assertSafeAgent(agent: string): void {
@@ -58,17 +59,56 @@ export async function createAgentWorktree(opts: {
       stdin: "ignore",
     },
   );
-  if (result.exitCode !== 0) {
+  if (result.exitCode === 0) {
+    return { agent: opts.agent, path, strategy: "git-worktree" };
+  }
+
+  const worktreeError = result.stderr || result.stdout || "unknown error";
+  await rm(path, { recursive: true, force: true });
+  await mkdir(dirname(path), { recursive: true });
+
+  const clone = await execa(
+    "git",
+    ["clone", "--no-checkout", "--no-hardlinks", opts.repoRoot, path],
+    {
+      reject: false,
+      stdin: "ignore",
+    },
+  );
+  if (clone.exitCode !== 0) {
     throw new Error(
-      `git worktree add failed for ${opts.agent}: ${result.stderr || result.stdout || "unknown error"}`,
+      `git worktree add failed for ${opts.agent}: ${worktreeError}; git clone fallback also failed: ${
+        clone.stderr || clone.stdout || "unknown error"
+      }`,
     );
   }
-  return { agent: opts.agent, path };
-}
 
-export async function removeAgentWorktree(opts: { repoRoot: string; path: string }): Promise<void> {
-  await execa("git", ["-C", opts.repoRoot, "worktree", "remove", "--force", opts.path], {
+  const checkout = await execa("git", ["-C", path, "checkout", "--detach", opts.commit], {
     reject: false,
     stdin: "ignore",
   });
+  if (checkout.exitCode !== 0) {
+    await rm(path, { recursive: true, force: true });
+    throw new Error(
+      `git worktree add failed for ${opts.agent}: ${worktreeError}; git clone fallback checkout failed: ${
+        checkout.stderr || checkout.stdout || "unknown error"
+      }`,
+    );
+  }
+
+  return { agent: opts.agent, path, strategy: "git-clone" };
+}
+
+export async function removeAgentWorktree(opts: { repoRoot: string; path: string }): Promise<void> {
+  const result = await execa(
+    "git",
+    ["-C", opts.repoRoot, "worktree", "remove", "--force", opts.path],
+    {
+      reject: false,
+      stdin: "ignore",
+    },
+  );
+  if (result.exitCode !== 0) {
+    await rm(opts.path, { recursive: true, force: true });
+  }
 }

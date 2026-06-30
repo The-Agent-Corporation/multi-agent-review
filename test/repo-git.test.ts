@@ -57,7 +57,33 @@ describe("agent worktrees", () => {
     });
 
     expect(worktree.path).toBe(agentWorktreePath(runDir, "claude-1"));
+    expect(worktree.strategy).toBe("git-worktree");
     expect(existsSync(join(worktree.path, "README.md"))).toBe(true);
+  });
+
+  it("falls back to a detached local clone when linked worktree metadata cannot be created", async () => {
+    git(["init", "-q"]);
+    git(["config", "user.email", "a@example.com"]);
+    git(["config", "user.name", "A"]);
+    writeFileSync(join(workdir, "README.md"), "# test\n", "utf8");
+    git(["add", "README.md"]);
+    git(["commit", "-qm", "init"]);
+    const commit = git(["rev-parse", "HEAD"]);
+    const runDir = join(workdir, "runs", "r1");
+
+    writeFileSync(join(workdir, ".git", "worktrees"), "not a directory\n", "utf8");
+
+    const worktree = await createAgentWorktree({
+      repoRoot: workdir,
+      commit,
+      runDir,
+      agent: "claude-1",
+    });
+
+    expect(worktree.path).toBe(agentWorktreePath(runDir, "claude-1"));
+    expect(worktree.strategy).toBe("git-clone");
+    expect(existsSync(join(worktree.path, "README.md"))).toBe(true);
+    expect(git(["-C", worktree.path, "rev-parse", "HEAD"])).toBe(commit);
   });
 
   it("rejects unsafe agent path segments", () => {

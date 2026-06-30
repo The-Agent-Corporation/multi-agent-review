@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import fsExtra from "fs-extra";
 import { seedInstructions, type Vendor } from "../protocol/instructions.js";
-import { createAgentWorktree } from "../repo/git.js";
+import { type AgentWorktree, createAgentWorktree } from "../repo/git.js";
 import { isDone } from "./artifacts.js";
 import { artifactName } from "./layout.js";
 
@@ -79,6 +79,8 @@ export interface DraftWorkspace {
   artifactDir: string;
   /** Linked git worktree path when repo-aware execution is active. */
   worktreePath?: string;
+  /** Isolation strategy used for repo-aware execution. */
+  isolationStrategy?: AgentWorktree["strategy"];
   /** Human-readable hint prepended to the draft prompt. */
   promptHint?: string;
 }
@@ -112,13 +114,18 @@ export async function repoAwareDraftWorkspace(opts: {
     cwd: worktree.path,
     artifactDir,
     worktreePath: worktree.path,
+    isolationStrategy: worktree.strategy,
     promptHint: [
       "## Repo-aware MAR workspace",
-      "You are running from a disposable git worktree for this review.",
-      "You may inspect the repository files in this worktree.",
+      worktree.strategy === "git-clone"
+        ? "You are running from a disposable git clone snapshot for this review."
+        : "You are running from a disposable git worktree for this review.",
+      worktree.strategy === "git-clone"
+        ? "You may inspect the repository files in this clone snapshot."
+        : "You may inspect the repository files in this worktree.",
       "Read `.mar/input.md` as the document under review.",
       "Read the vendor instruction file inside `.mar/` as the MAR output format contract.",
-      "Do not intentionally edit files; accidental edits are isolated to this disposable worktree.",
+      "Do not intentionally edit files; accidental edits are isolated to this disposable workspace.",
     ].join("\n"),
   };
 }

@@ -235,6 +235,7 @@ export async function runPhase(
             await recordAgentWorktree(runDir, {
               agent: entry.name,
               path: draftWorkspace.worktreePath,
+              strategy: draftWorkspace.isolationStrategy,
               retained: true,
             });
           }

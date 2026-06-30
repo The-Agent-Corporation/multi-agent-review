@@ -32,6 +32,7 @@ export type DroppedAgent = z.infer<typeof DroppedAgent>;
 export const ExecutionWorktree = z.object({
   agent: z.string(),
   path: z.string(),
+  strategy: z.enum(["git-worktree", "git-clone"]).optional(),
   retained: z.boolean().default(true),
   cleanedAt: z.string().optional(),
 });
