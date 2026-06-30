@@ -103,6 +103,31 @@ in-process). A run whose convergence deadlocks ends with terminal status
 `escalated` — it still produces a merged fallback document plus the open decision
 in the decision record for a human to settle.
 
+## GSD checkpoint integration
+
+MAR can run as a blocking review layer inside a GSD phase loop:
+
+```sh
+mar gsd install --mode required
+gsd capability install .gsd/capabilities/mar-checkpoints --scope project --yes
+```
+
+Required mode runs MAR at configured GSD checkpoints and stops the loop when
+`latest.json` contains a blocking, invalid, or fail-closed checkpoint verdict.
+Advisory mode writes the same artifacts without stopping the loop.
+
+The installed overlay adds plan and implementation checkpoints:
+
+```sh
+mar checkpoint plan --mode required --out .planning/mar-checkpoints/plan-post --phase-dir .planning
+mar checkpoint implementation --mode required --out .planning/mar-checkpoints/execute-post
+mar checkpoint verdict --out .planning/mar-checkpoints/execute-post
+```
+
+Plan checkpoints read plan-like files from the GSD phase directory. Implementation
+checkpoints review the worktree diff against `--base` plus untracked files, bounded
+by `--max-diff-bytes`.
+
 ## GitHub PR review
 
 `mar` can turn a GitHub pull request into a protocol input, run the full multi-agent

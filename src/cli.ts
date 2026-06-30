@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Command } from "commander";
+import { execa } from "execa";
 import { makeAdapter } from "./adapters/registry.js";
+import { runCheckpoint } from "./checkpoint/run.js";
+import { CheckpointVerdict } from "./checkpoint/schema.js";
+import { gateExitCode } from "./checkpoint/verdict.js";
 import { loadConfig, resolveAgent } from "./config.js";
 import { ensureMarEnv, loadMarEnv, redactedEnvReport } from "./env/mar-env.js";
 import { assertTerminalModeSupported, type TerminalMode } from "./execution/tmux.js";
@@ -10,6 +16,7 @@ import { assertReviewable } from "./gates.js";
 import { installPrepareCommitMessageNotificationHook } from "./git/notify-hook.js";
 import { installPrReviewWorkflow } from "./github/install-workflow.js";
 import { type NotificationStatus, notifyPullRequestCompletion } from "./github/notify.js";
+import { installGsdCapability } from "./gsd/install.js";
 import { detectVendors, writeStarterConfig } from "./init.js";
 import { logInvocation } from "./log/invocation.js";
 import { runPullRequestReview } from "./pr-review.js";
@@ -36,6 +43,7 @@ import { addArtifact, createRun, readManifest, setStatus } from "./workspace/man
 // WR-05: cap a prompt FILE read at 10 MB, matching claude's stdin cap (claude 2.1.128+). A
 // value larger than this is treated as an error rather than silently streamed to the model.
 const MAX_PROMPT_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_CHECKPOINT_DIFF_BYTES = 10 * 1024 * 1024;
 
 // Run-id charset MUST match `newRunId` (timestamp + nanoid alphabet); no path separators or
 // "..", so a supplied --run can never escape the runs/ tree (T-01-10 tampering mitigation).
@@ -105,6 +113,28 @@ interface AuthInitOptions {
   repo?: string;
 }
 
+type CheckpointMode = "required" | "advisory";
+
+interface CheckpointOptions extends RunOptions {
+  mode?: string;
+  out?: string;
+  phaseDir?: string;
+  planFile?: string[];
+  base?: string;
+  summary?: string[];
+  maxDiffBytes?: string;
+}
+
+interface CheckpointVerdictOptions {
+  out: string;
+}
+
+interface GsdInstallOptions {
+  mode?: string;
+  target?: string;
+  force?: boolean;
+}
+
 /**
  * Resolve the effective per-run gating mode (PROT-05 / D-53 / Pitfall 5). Precedence:
  *   1. An explicit flag (`--mode`/`--gated`/`--autonomous`) WINS and skips the prompt — works in
@@ -151,6 +181,129 @@ function resolveTerminalMode(
   if (opts.terminalMode === undefined) return configMode;
   if (opts.terminalMode === "headless" || opts.terminalMode === "tmux") return opts.terminalMode;
   throw new Error(`terminal mode must be headless or tmux, got: ${opts.terminalMode}`);
+}
+
+function parseCheckpointMode(value: string | undefined): CheckpointMode | null {
+  const mode = value ?? "required";
+  return mode === "required" || mode === "advisory" ? mode : null;
+}
+
+function parseMaxDiffBytes(value: string | undefined): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function writeCheckpointCliErrorVerdict(
+  outDir: string,
+  stage: "plan" | "implementation",
+  point: string,
+  mode: CheckpointMode,
+  message: string,
+): Promise<void> {
+  await mkdir(outDir, { recursive: true });
+  const verdict = CheckpointVerdict.parse({
+    schemaVersion: 1,
+    stage,
+    point,
+    mode,
+    status: "error",
+    runId: "cli-setup",
+    summaryPath: join(outDir, "cli-setup-summary.md"),
+    blockers: [
+      {
+        id: "MAR-CHECKPOINT-CLI-SETUP",
+        severity: "critical",
+        title: "MAR checkpoint CLI setup failed",
+        evidence: [message],
+        recommendation: "Fix the checkpoint command setup error before trusting prior verdicts.",
+      },
+    ],
+    warnings: [],
+    nextAction: "ask_user",
+    createdAt: new Date().toISOString(),
+  });
+  await writeFile(join(outDir, "latest.json"), `${JSON.stringify(verdict, null, 2)}\n`, "utf8");
+  await writeFile(
+    join(outDir, "cli-setup-summary.md"),
+    `# MAR Checkpoint CLI Setup Failure\n\n${message}\n`,
+    "utf8",
+  );
+}
+
+function isPlanFile(name: string): boolean {
+  return /\.(?:md|markdown|txt)$/i.test(name);
+}
+
+export async function discoverPlanFiles(phaseDir: string): Promise<string[]> {
+  const entries = await readdir(phaseDir, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && isPlanFile(entry.name))
+    .map((entry) => join(phaseDir, entry.name))
+    .sort();
+}
+
+export async function readCheckpointDiff(
+  baseRef: string,
+  maxBytes = MAX_CHECKPOINT_DIFF_BYTES,
+): Promise<string> {
+  const result = await execa("git", ["diff", "--no-ext-diff", baseRef], {
+    cwd: process.cwd(),
+    reject: false,
+    stdin: "ignore",
+    maxBuffer: maxBytes,
+  });
+  if (result.exitCode !== 0) {
+    const message =
+      result.stderr.trim() || result.stdout.trim() || `git diff exited ${result.exitCode}`;
+    throw new Error(`could not read implementation diff for base "${baseRef}": ${message}`);
+  }
+  const bytes = Buffer.byteLength(result.stdout, "utf8");
+  if (bytes > maxBytes) {
+    throw new Error(`implementation diff is ${bytes} bytes, exceeds the ${maxBytes}-byte cap`);
+  }
+  const untracked = await execa("git", ["ls-files", "--others", "--exclude-standard"], {
+    cwd: process.cwd(),
+    reject: false,
+    stdin: "ignore",
+    maxBuffer: maxBytes,
+  });
+  if (untracked.exitCode !== 0) {
+    const message =
+      untracked.stderr.trim() ||
+      untracked.stdout.trim() ||
+      `git ls-files exited ${untracked.exitCode}`;
+    throw new Error(`could not list untracked files: ${message}`);
+  }
+  const untrackedSections = await Promise.all(
+    untracked.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map(async (path) => {
+        try {
+          const info = await stat(path);
+          if (info.size > maxBytes) {
+            throw new Error(`file is ${info.size} bytes, exceeds the ${maxBytes}-byte cap`);
+          }
+          const text = await readFile(path, "utf8");
+          return [`## Untracked file: ${path}`, "", "```", text, "```"].join("\n");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return [`## Untracked file: ${path}`, "", `Could not read file: ${message}`].join("\n");
+        }
+      }),
+  );
+  const fullDiff =
+    untrackedSections.length === 0
+      ? result.stdout
+      : [result.stdout, "## Untracked files", ...untrackedSections].join("\n\n");
+  const totalBytes = Buffer.byteLength(fullDiff, "utf8");
+  if (totalBytes > maxBytes) {
+    throw new Error(`implementation diff is ${totalBytes} bytes, exceeds the ${maxBytes}-byte cap`);
+  }
+  return fullDiff;
 }
 
 async function loadExecutionEnv(cwd = process.cwd()): Promise<{
@@ -716,6 +869,166 @@ async function runPrInstallWorkflow(opts: PullRequestInstallWorkflowOptions = {}
   }
 }
 
+async function checkpointExecutionSetup(opts: RunOptions): Promise<
+  | {
+      ok: true;
+      config: Awaited<ReturnType<typeof loadConfig>>;
+      gating: GatingOptions;
+      execution: ProtocolExecution;
+    }
+  | { ok: false; code: number }
+> {
+  let config: Awaited<ReturnType<typeof loadConfig>>;
+  try {
+    config = await loadConfig(opts.config);
+    assertReviewable(config.agents);
+    const gating = await resolveGating(opts, config.defaults.mode);
+    const terminalMode = resolveTerminalMode(opts, config.defaults.terminalMode);
+    const loaded = await loadExecutionEnv();
+    const execution = await buildExecutionContext({
+      runId: newRunId(),
+      repo: loaded.repo,
+      env: loaded.env,
+      terminalMode,
+    });
+    return { ok: true, config, gating, execution: execution.protocolExecution };
+  } catch (err) {
+    process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return { ok: false, code: 2 };
+  }
+}
+
+async function runCheckpointPlan(opts: CheckpointOptions = {}): Promise<number> {
+  const outDir = opts.out ?? ".planning/mar-checkpoints/plan-post";
+  const mode = parseCheckpointMode(opts.mode);
+  if (mode === null) {
+    await writeCheckpointCliErrorVerdict(
+      outDir,
+      "plan",
+      "plan:post",
+      "required",
+      "--mode must be required or advisory",
+    );
+    process.stderr.write("error: --mode must be required or advisory\n");
+    return 2;
+  }
+  const setup = await checkpointExecutionSetup(opts);
+  if (!setup.ok) {
+    await writeCheckpointCliErrorVerdict(
+      outDir,
+      "plan",
+      "plan:post",
+      mode,
+      "checkpoint setup failed before MAR could run",
+    );
+    return setup.code;
+  }
+
+  try {
+    const phaseDir = opts.phaseDir ?? ".planning";
+    const planFiles = opts.planFile ?? (await discoverPlanFiles(phaseDir));
+    const result = await runCheckpoint({
+      cwd: process.cwd(),
+      stage: "plan",
+      point: "plan:post",
+      mode,
+      config: setup.config,
+      phaseDir,
+      planFiles,
+      outDir,
+      gating: setup.gating,
+      execution: setup.execution,
+    });
+    return result.exitCode;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await writeCheckpointCliErrorVerdict(outDir, "plan", "plan:post", mode, message);
+    process.stderr.write(`error: ${message}\n`);
+    return 1;
+  }
+}
+
+async function runCheckpointImplementation(opts: CheckpointOptions = {}): Promise<number> {
+  const outDir = opts.out ?? ".planning/mar-checkpoints/execute-post";
+  const mode = parseCheckpointMode(opts.mode);
+  if (mode === null) {
+    await writeCheckpointCliErrorVerdict(
+      outDir,
+      "implementation",
+      "execute:post",
+      "required",
+      "--mode must be required or advisory",
+    );
+    process.stderr.write("error: --mode must be required or advisory\n");
+    return 2;
+  }
+  const maxDiffBytes = parseMaxDiffBytes(opts.maxDiffBytes);
+  if (maxDiffBytes === null) {
+    await writeCheckpointCliErrorVerdict(
+      outDir,
+      "implementation",
+      "execute:post",
+      mode,
+      "--max-diff-bytes must be a positive integer",
+    );
+    process.stderr.write("error: --max-diff-bytes must be a positive integer\n");
+    return 2;
+  }
+  const setup = await checkpointExecutionSetup(opts);
+  if (!setup.ok) {
+    await writeCheckpointCliErrorVerdict(
+      outDir,
+      "implementation",
+      "execute:post",
+      mode,
+      "checkpoint setup failed before MAR could run",
+    );
+    return setup.code;
+  }
+
+  try {
+    const baseRef = opts.base ?? "main";
+    const diffText = await readCheckpointDiff(baseRef, maxDiffBytes);
+    const result = await runCheckpoint({
+      cwd: process.cwd(),
+      stage: "implementation",
+      point: "execute:post",
+      mode,
+      config: setup.config,
+      baseRef,
+      diffText,
+      summaries: opts.summary ?? [],
+      outDir,
+      gating: setup.gating,
+      execution: setup.execution,
+    });
+    return result.exitCode;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await writeCheckpointCliErrorVerdict(outDir, "implementation", "execute:post", mode, message);
+    process.stderr.write(`error: ${message}\n`);
+    return 1;
+  }
+}
+
+async function runGsdInstall(opts: GsdInstallOptions = {}): Promise<number> {
+  const mode = parseCheckpointMode(opts.mode);
+  if (mode === null) {
+    process.stderr.write("error: --mode must be required or advisory\n");
+    return 2;
+  }
+  try {
+    return await installGsdCapability({
+      mode,
+      target: opts.target ?? ".",
+      force: opts.force === true,
+    });
+  } catch (err) {
+    process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
+}
+
 /**
  * `mar resume <run-id>` / `mar resume --last` — continue an interrupted/failed/paused run from its
  * last completed phase (PROT-06, D-55). THIN controller (02-05 thin-CLI rule): it loads the roster,
@@ -924,6 +1237,71 @@ export function buildProgram(): Command {
     .option("--tmux", "run reviewers through the tmux execution backend")
     .action(async (input: string, opts: RunOptions) => {
       process.exitCode = await runRun(input, opts);
+    });
+
+  const checkpoint = program
+    .command("checkpoint")
+    .description("Run or inspect MAR checkpoint reviews");
+
+  checkpoint
+    .command("plan")
+    .description("Run checkpoint plan review")
+    .option("--phase-dir <path>", "planning phase directory", ".planning")
+    .option("--plan-file <path...>", "plan file paths to include")
+    .option("--mode <required|advisory>", "checkpoint enforcement mode", "required")
+    .option("--out <dir>", "checkpoint output directory")
+    .option("--config <path>", "path to mar.config.json")
+    .option("--gated", "gated mode: pause at each phase boundary for approval")
+    .option("--autonomous", "autonomous mode: run unattended with no pauses")
+    .option(
+      "--pause-and-exit",
+      "gated only: pause at the first boundary, exit 0, resume with `mar resume`",
+    )
+    .option("--terminal-mode <headless|tmux>", "review execution backend")
+    .option("--tmux", "run reviewers through the tmux execution backend")
+    .action(async (opts: CheckpointOptions) => {
+      process.exitCode = await runCheckpointPlan(opts);
+    });
+
+  checkpoint
+    .command("implementation")
+    .description("Run checkpoint implementation review")
+    .option("--base <ref>", "diff base ref", "main")
+    .option("--mode <required|advisory>", "checkpoint enforcement mode", "required")
+    .option("--out <dir>", "checkpoint output directory")
+    .option("--summary <text...>", "implementation summary text")
+    .option("--max-diff-bytes <n>", "maximum implementation diff bytes to send to reviewers")
+    .option("--config <path>", "path to mar.config.json")
+    .option("--gated", "gated mode: pause at each phase boundary for approval")
+    .option("--autonomous", "autonomous mode: run unattended with no pauses")
+    .option(
+      "--pause-and-exit",
+      "gated only: pause at the first boundary, exit 0, resume with `mar resume`",
+    )
+    .option("--terminal-mode <headless|tmux>", "review execution backend")
+    .option("--tmux", "run reviewers through the tmux execution backend")
+    .action(async (opts: CheckpointOptions) => {
+      process.exitCode = await runCheckpointImplementation(opts);
+    });
+
+  checkpoint
+    .command("verdict")
+    .description("Evaluate checkpoint verdict gate")
+    .requiredOption("--out <dir>", "checkpoint output directory")
+    .action((opts: CheckpointVerdictOptions) => {
+      process.exitCode = gateExitCode(join(opts.out, "latest.json"));
+    });
+
+  const gsd = program.command("gsd").description("Install MAR into GSD workflows");
+
+  gsd
+    .command("install")
+    .description("Run gsd install")
+    .option("--mode <required|advisory>", "checkpoint enforcement mode", "required")
+    .option("--target <path>", "target repository path", ".")
+    .option("--force", "overwrite existing GSD checkpoint capability")
+    .action(async (opts: GsdInstallOptions) => {
+      process.exitCode = await runGsdInstall(opts);
     });
 
   const pr = program.command("pr").description("GitHub pull request workflows");
