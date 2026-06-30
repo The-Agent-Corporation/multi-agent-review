@@ -109,8 +109,17 @@ MAR can run as a blocking review layer inside a GSD phase loop:
 
 ```sh
 mar gsd install --mode required
-gsd capability install .gsd/capabilities/mar-checkpoints --scope project --yes
 ```
+
+If OpenGSD is not installed for the target runtime yet, run
+`npx @opengsd/gsd-core@latest` first. Then consent the generated project overlay:
+
+```sh
+npx -y -p @opengsd/gsd-core@latest gsd-tools capability install ./.gsd/capabilities/mar-checkpoints --scope project --yes
+```
+
+If `gsd --help` shows a timer or another unrelated tool, prefer the `gsd-tools`
+command above.
 
 Required mode runs MAR at configured GSD checkpoints and stops the loop when
 `latest.json` contains a blocking, invalid, or fail-closed checkpoint verdict.

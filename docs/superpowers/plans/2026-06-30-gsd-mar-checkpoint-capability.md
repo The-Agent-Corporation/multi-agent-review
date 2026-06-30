@@ -872,8 +872,8 @@ export async function installGsdCapability(opts: GsdInstallOptions): Promise<num
     "utf8",
   );
 
-  process.stdout.write(`wrote GSD MAR checkpoint capability to ${root}\n`);
-  process.stdout.write(`next: gsd capability install ${root} --scope project --yes\n`);
+  process.stdout.write(`wrote OpenGSD MAR checkpoint capability to ${root}\n`);
+  process.stdout.write(`next: install OpenGSD if needed, then run npx -p @opengsd/gsd-core@latest gsd-tools capability install ...\n`);
   return 0;
 }
 ```
@@ -882,10 +882,11 @@ export async function installGsdCapability(opts: GsdInstallOptions): Promise<num
 
 - `id: "mar-checkpoints"`
 - `role: "feature"`
+- `version`, `title`, `description`, `tier`, and `requires` per the OpenGSD capability envelope
 - `runtimeCompat.supported: ["*"]`
 - `skills: ["mar-checkpoint-plan", "mar-checkpoint-implementation"]`
-- config key `workflow.mar_checkpoints`
-- steps at `plan:post` and `execute:post`
+- config entry `workflow.mar_checkpoints`
+- steps at `plan:post` and `execute:post` using `ref.skill`, `produces`, `consumes`, and `onError`
 
 Use `onError: "halt"` in required mode and `onError: "skip"` in advisory mode until a deterministic GSD gate query is verified on the installed GSD version.
 
@@ -919,8 +920,17 @@ MAR can run as a blocking review layer inside a GSD phase loop:
 
 \`\`\`bash
 mar gsd install --mode required
-gsd capability install .gsd/capabilities/mar-checkpoints --scope project --yes
 \`\`\`
+
+If OpenGSD is not installed for the target runtime yet, run
+`npx @opengsd/gsd-core@latest` first. Then consent the generated project overlay:
+
+\`\`\`bash
+npx -y -p @opengsd/gsd-core@latest gsd-tools capability install ./.gsd/capabilities/mar-checkpoints --scope project --yes
+\`\`\`
+
+If `gsd --help` shows a timer or another unrelated tool, prefer the `gsd-tools`
+command above.
 
 Required mode runs MAR at configured GSD checkpoints and stops the loop when
 `verdict.json` contains blocking findings. Advisory mode writes the same artifacts

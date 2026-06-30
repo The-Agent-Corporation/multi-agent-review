@@ -108,7 +108,7 @@ This command is what GSD gates or gate-like skills call. The LLM review is not t
 mar gsd install --mode required --target .
 ```
 
-The installer writes a local capability bundle and, when a usable GSD capability lifecycle is present, asks GSD to install/consent it project-locally. If GSD Core is not runnable in the target repo, MAR writes the bundle and prints the exact `gsd capability install` command.
+The installer writes a local capability bundle and, when a usable GSD capability lifecycle is present, asks GSD to install/consent it project-locally. If OpenGSD is not installed for the target runtime, MAR writes the bundle, points the user at `npx @opengsd/gsd-core@latest`, and prints an `npx -p @opengsd/gsd-core@latest gsd-tools capability install ...` command. Dogfood found one machine where `gsd` resolved to an unrelated timer CLI, so MAR should not rely on a bare `gsd` binary.
 
 ## Verdict Contract
 
@@ -244,7 +244,7 @@ The default remains ask-the-user. Auto-fix should not ship in the first minimal 
 ## Open Questions
 
 - Whether the installed GSD version can dispatch third-party command families from gates, or only from steps.
-- Whether `gsd capability install ./path --scope project --yes` is consistently available on the user's machines.
+- Whether the OpenGSD capability lifecycle is consistently available on the user's machines; dogfood found one shell where `gsd` resolved to an unrelated timer CLI.
 - Whether GSD should receive an upstream patch for a first-class `external-command` gate check if command-family gate queries are not enough.
 
 ## First Slice
