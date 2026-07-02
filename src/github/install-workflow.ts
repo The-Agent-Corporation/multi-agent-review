@@ -95,6 +95,7 @@ jobs:
         with:
           pr: \${{ env.PR_SELECTOR }}
           post: \${{ env.MAR_POST_REVIEW }}
+          claude-oauth-token: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           notify-webhook-url: \${{ secrets.MAR_NOTIFY_WEBHOOK_URL }}
           notify-webhook-token: \${{ secrets.MAR_NOTIFY_WEBHOOK_TOKEN }}
           notify-kind: \${{ vars.MAR_NOTIFY_KIND || 'claude-code-channel' }}

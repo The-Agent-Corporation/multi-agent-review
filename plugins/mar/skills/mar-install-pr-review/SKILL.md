@@ -57,10 +57,14 @@ After installation:
      and `statuses: write`;
    - `runs-on` matching the intended self-hosted runner labels;
    - `uses: aaron-agent-corporation/multi-agent-review@main` unless the user pinned
-     another ref.
+     another ref;
+   - `claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` for Claude Code
+     subscription auth.
 3. Tell the user the follow-up operational checks:
    - self-hosted runner is online for that repo;
    - vendor CLIs are authenticated on that runner;
+   - optional `CLAUDE_CODE_OAUTH_TOKEN` secret is set when Claude Code should run
+     from a subscription/OAuth credential instead of an API key;
    - optional `MAR_NOTIFY_WEBHOOK_URL` and `MAR_NOTIFY_WEBHOOK_TOKEN` secrets are
      set if they want completion notifications to loop back automatically after
      every MAR run;

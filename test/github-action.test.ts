@@ -17,6 +17,7 @@ describe("GitHub Action PR review wrapper", () => {
     expect(action).toContain("notify-kind:");
     expect(action).toContain("notify-target:");
     expect(action).toContain("default: default");
+    expect(action).toContain("claude-oauth-token:");
     expect(action).toContain("github-token:");
     expect(action).toContain("working-directory: $" + "{{ github.action_path }}");
     expect(action).toContain("uses: actions/checkout@v4");
@@ -33,6 +34,7 @@ describe("GitHub Action PR review wrapper", () => {
     expect(action).toContain("MAR_NOTIFY_WEBHOOK_TOKEN: $" + "{{ inputs.notify-webhook-token }}");
     expect(action).toContain("MAR_NOTIFY_KIND: $" + "{{ inputs.notify-kind }}");
     expect(action).toContain("MAR_NOTIFY_TARGET: $" + "{{ inputs.notify-target }}");
+    expect(action).toContain("CLAUDE_CODE_OAUTH_TOKEN: $" + "{{ inputs.claude-oauth-token }}");
     expect(action).toContain("MAR_CONFIG: $" + "{{ github.action_path }}/mar.config.json");
     expect(action).toContain("PREFLIGHT: $" + "{{ inputs.preflight }}");
     expect(action).toContain("gh pr view");
@@ -78,6 +80,7 @@ describe("GitHub Action PR review wrapper", () => {
     expect(workflow).toContain("uses: ./");
     expect(workflow).toContain("pr: $" + "{{ env.PR_SELECTOR }}");
     expect(workflow).toContain("post: $" + "{{ env.MAR_POST_REVIEW }}");
+    expect(workflow).toContain("claude-oauth-token: $" + "{{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}");
     expect(workflow).toContain("notify-webhook-url: $" + "{{ secrets.MAR_NOTIFY_WEBHOOK_URL }}");
     expect(workflow).toContain(
       "notify-webhook-token: $" + "{{ secrets.MAR_NOTIFY_WEBHOOK_TOKEN }}",

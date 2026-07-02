@@ -8,6 +8,7 @@ const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DEFAULT_EXAMPLE = [
   "# Repo-local MAR environment.",
   "# Values in MAR.env are local secrets and must not be committed.",
+  "CLAUDE_CODE_OAUTH_TOKEN=",
   "ANTHROPIC_API_KEY=",
   "GEMINI_API_KEY=",
   "GOOGLE_CLOUD_PROJECT=",

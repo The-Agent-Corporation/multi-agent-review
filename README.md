@@ -262,6 +262,7 @@ jobs:
         with:
           pr: ${{ env.PR_SELECTOR }}
           post: ${{ env.MAR_POST_REVIEW }}
+          claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           notify-webhook-url: ${{ secrets.MAR_NOTIFY_WEBHOOK_URL }}
           notify-webhook-token: ${{ secrets.MAR_NOTIFY_WEBHOOK_TOKEN }}
           github-token: ${{ github.token }}
@@ -276,6 +277,12 @@ the run fails, it also creates or updates a sticky PR comment with the workflow
 link and operator next steps. `statuses: write` is required for the PR UI status,
 and `issues: write` is required for the failure comment.
 
+For Claude Code subscription auth on self-hosted runners, generate a noninteractive
+OAuth token with `claude setup-token` and store it as the target repository secret
+`CLAUDE_CODE_OAUTH_TOKEN`. MAR strips `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`
+from Claude subprocesses so the Claude CLI uses subscription/OAuth credentials
+instead of API-key billing.
+
 ### PR completion notifications
 
 The reusable action can notify an external relay after a MAR review completes. To
@@ -285,6 +292,7 @@ your relay needs to route to a specific agent or channel:
 
 ```yaml
 with:
+  claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
   notify-webhook-url: ${{ secrets.MAR_NOTIFY_WEBHOOK_URL }}
   notify-webhook-token: ${{ secrets.MAR_NOTIFY_WEBHOOK_TOKEN }}
   notify-kind: ${{ vars.MAR_NOTIFY_KIND || 'claude-code-channel' }}
