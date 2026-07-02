@@ -33,6 +33,7 @@ const req = {
   timeoutMs: 1000,
   env: {
     ANTHROPIC_API_KEY: "secret",
+    ANTHROPIC_AUTH_TOKEN: "token-secret",
     GROK_API_KEY: "grok-secret",
     HOME: grokSourceHome,
     MAR_CODEX_HOME: "/tmp/codex-home",
@@ -50,11 +51,13 @@ afterEach(() => {
 });
 
 describe("adapter env threading", () => {
-  it("claude adapter passes repo-local env overlay", async () => {
+  it("claude adapter preserves repo-local env but clears Anthropic API auth", async () => {
     const calls = mockExeca(JSON.stringify({ is_error: false, result: "pong" }));
     const { makeClaudeAdapter } = await import("../src/adapters/claude.js");
     await makeClaudeAdapter("claude").invoke(req);
-    expect(calls[0].opts.env).toMatchObject({ ANTHROPIC_API_KEY: "secret" });
+    expect(calls[0].opts.env).toMatchObject({ HOME: grokSourceHome });
+    expect(calls[0].opts.env).toHaveProperty("ANTHROPIC_API_KEY", undefined);
+    expect(calls[0].opts.env).toHaveProperty("ANTHROPIC_AUTH_TOKEN", undefined);
   });
 
   it("codex adapter preserves CODEX_HOME while honoring MAR_CODEX_HOME", async () => {

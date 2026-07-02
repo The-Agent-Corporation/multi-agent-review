@@ -127,7 +127,7 @@ function hintFor(vendor: AgentEntry["vendor"], stage: "install" | "probe"): stri
     case "codex":
       return "codex probe failed (auth/responsiveness): run: codex login";
     case "claude":
-      return "claude probe failed (auth/responsiveness): run: claude /login";
+      return "claude probe failed (auth/responsiveness): run: claude /login; for subscription auth, ensure ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN do not shadow the Claude.ai login";
     case "grok":
       return "grok probe failed (auth/responsiveness): run: grok login, or export XAI_API_KEY / GROK_API_KEY";
   }

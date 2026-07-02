@@ -169,6 +169,18 @@ describe("runPreflight — tiered check + probe + hints", () => {
     expect(results[0].hint ?? "").toMatch(/codex login/i);
   });
 
+  it("claude probe auth-fail -> responsive:false + subscription auth env-shadow hint", async () => {
+    const { results, allPass } = await runPreflight(
+      [{ name: "claude-1", vendor: "claude", bin: FAKE_CLAUDE }],
+      { probePrompt: "--fail-auth" },
+    );
+    expect(results[0].installed).toBe(true);
+    expect(results[0].responsive).toBe(false);
+    expect(results[0].hint ?? "").toMatch(/claude \/login/i);
+    expect(results[0].hint ?? "").toMatch(/ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN/);
+    expect(allPass).toBe(false);
+  });
+
   it("grok probe auth-fail -> responsive:false + actionable grok login/API-key hint", async () => {
     const { results, allPass } = await runPreflight(
       [{ name: "grok-build-1", vendor: "grok", bin: FAKE_GROK, model: "grok-build" }],

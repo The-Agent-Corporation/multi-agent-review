@@ -9,6 +9,18 @@ import { redactArgvAt, safeJsonParse, splitBin } from "./common.js";
 // Re-export splitBin so existing imports of `../adapters/claude.js` keep working unchanged.
 export { splitBin };
 
+const CLAUDE_API_AUTH_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"] as const;
+
+function subscriptionAuthEnv(env?: Record<string, string>): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...(env ?? {}) };
+  for (const key of CLAUDE_API_AUTH_ENV) {
+    // `undefined` tells execa to remove inherited process.env values from the child process.
+    // Otherwise API-key auth shadows the Claude.ai subscription login and can hit API credits.
+    out[key] = undefined;
+  }
+  return out;
+}
+
 /**
  * Build the exact, pinned claude argv for headless JSON invocation.
  *
@@ -54,8 +66,8 @@ export function makeClaudeAdapter(bin = "claude", model?: string): AgentAdapter 
         // value, never via stdin. claude already tolerated execa's default open pipe, but closing
         // it removes any chance of a stdin-block and keeps all three adapters identical.
         stdin: "ignore",
+        env: subscriptionAuthEnv(req.env),
         // No shell (execa passes argv as an array) — prompt cannot inject shell commands (T-01-05).
-        ...(req.env ? { env: req.env } : {}),
         // PROT-04: scoped draft-phase cwd, conditionally spread LAST so the absent case spawns the
         // EXACT same options as today (omit when unset → unchanged behavior).
         ...(req.cwd ? { cwd: req.cwd } : {}),
