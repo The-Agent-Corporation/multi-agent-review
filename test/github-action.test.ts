@@ -51,6 +51,7 @@ describe("GitHub Action PR review wrapper", () => {
     expect(action).toContain("codex login --with-api-key");
     expect(action).toContain("unset CODEX_ACCESS_TOKEN");
     expect(action).toContain("unset CODEX_API_KEY");
+    expect(action).toContain("unset OPENAI_API_KEY");
     expect(action).toContain("MAR_CONFIG: $" + "{{ github.action_path }}/mar.config.json");
     expect(action).toContain("PREFLIGHT: $" + "{{ inputs.preflight }}");
     expect(action).toContain("gh pr view");

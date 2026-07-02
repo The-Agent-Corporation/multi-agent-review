@@ -154,6 +154,74 @@ describe("makeCodexAdapter (against fake-codex fixture)", () => {
     vi.resetModules();
   });
 
+  it("strips ambient API-key auth so ChatGPT login is not shadowed", async () => {
+    const execaMock = vi.fn().mockResolvedValue({
+      stdout: '{"type":"turn.completed"}',
+      stderr: "",
+      exitCode: 0,
+      durationMs: 5,
+      timedOut: false,
+      isForcefullyTerminated: false,
+    });
+    vi.doMock("execa", () => ({ execa: execaMock }));
+    vi.resetModules();
+    const { makeCodexAdapter: fresh } = await import("../src/adapters/codex.js");
+
+    const adapter = fresh("codex");
+    await adapter.invoke({
+      ...req("hello world"),
+      env: {
+        OPENAI_API_KEY: "openai-secret",
+        CODEX_API_KEY: "codex-secret",
+        CODEX_ACCESS_TOKEN: "access-secret",
+      },
+    });
+
+    const [, , opts] = execaMock.mock.calls[0];
+    expect(opts.env).toMatchObject({
+      OPENAI_API_KEY: undefined,
+      CODEX_API_KEY: undefined,
+      CODEX_ACCESS_TOKEN: undefined,
+    });
+
+    vi.doUnmock("execa");
+    vi.resetModules();
+  });
+
+  it("keeps API-key auth only when explicitly requested", async () => {
+    const execaMock = vi.fn().mockResolvedValue({
+      stdout: '{"type":"turn.completed"}',
+      stderr: "",
+      exitCode: 0,
+      durationMs: 5,
+      timedOut: false,
+      isForcefullyTerminated: false,
+    });
+    vi.doMock("execa", () => ({ execa: execaMock }));
+    vi.resetModules();
+    const { makeCodexAdapter: fresh } = await import("../src/adapters/codex.js");
+
+    const adapter = fresh("codex");
+    await adapter.invoke({
+      ...req("hello world"),
+      env: {
+        MAR_CODEX_ALLOW_API_KEY: "1",
+        OPENAI_API_KEY: "openai-secret",
+        CODEX_API_KEY: "codex-secret",
+      },
+    });
+
+    const [, , opts] = execaMock.mock.calls[0];
+    expect(opts.env).toMatchObject({
+      MAR_CODEX_ALLOW_API_KEY: "1",
+      OPENAI_API_KEY: "openai-secret",
+      CODEX_API_KEY: "codex-secret",
+    });
+
+    vi.doUnmock("execa");
+    vi.resetModules();
+  });
+
   it("flag-pinning with model: makeCodexAdapter(bin, 'o4') adds ['-m','o4'] before the prompt", async () => {
     const execaMock = vi.fn().mockResolvedValue({
       stdout: '{"type":"turn.completed"}',

@@ -4,6 +4,19 @@ import { CodexEvent, type TurnResult } from "../schema/turn.js";
 import type { AgentAdapter, TurnRequest } from "./adapter.js";
 import { redactArgvAt, safeJsonParse, splitBin } from "./common.js";
 
+const CODEX_API_AUTH_ENV = ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"] as const;
+
+function chatGptAuthEnv(env: Record<string, string>): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...env };
+  if (out.MAR_CODEX_ALLOW_API_KEY === "1" || out.MAR_CODEX_ALLOW_API_KEY === "true") return out;
+  for (const key of CODEX_API_AUTH_ENV) {
+    // `undefined` tells execa to remove inherited process.env values from the child process.
+    // Otherwise API-key auth can shadow the saved ChatGPT/Codex login and hit API limits.
+    out[key] = undefined;
+  }
+  return out;
+}
+
 /**
  * Build the exact, pinned codex argv for headless NDJSON invocation (codex-cli 0.128.0,
  * LIVE-VERIFIED in RESEARCH.md). Pinned flags:
@@ -51,6 +64,7 @@ export function makeCodexAdapter(bin = "codex", model?: string): AgentAdapter {
         req.env?.CODEX_HOME ??
         process.env.MAR_CODEX_HOME ??
         `${homedir()}/.codex`;
+      const env = chatGptAuthEnv({ ...(req.env ?? {}), CODEX_HOME: codexHome });
       const result = await execa(cmd, argv, {
         timeout: req.timeoutMs, // wall-clock ms; subprocess terminated on overrun (D-17)
         killSignal: "SIGTERM",
@@ -60,7 +74,7 @@ export function makeCodexAdapter(bin = "codex", model?: string): AgentAdapter {
         // Codex CLI auth is stored under CODEX_HOME. Agent runtimes may set CODEX_HOME to their own
         // sandbox home, while `codex login` writes the user's normal ~/.codex/auth.json. Use that
         // standard store by default; MAR_CODEX_HOME is the explicit escape hatch for custom rosters.
-        env: { ...(req.env ?? {}), CODEX_HOME: codexHome },
+        env,
         // CRITICAL (02-05 live fix): close stdin. The prompt is passed as an argv positional, NEVER
         // via stdin — but `codex exec` BLOCKS on an open stdin pipe (execa's default), hanging every
         // invocation until the wall-clock timeout. `stdin:"ignore"` (no pipe) makes codex see EOF

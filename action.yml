@@ -270,6 +270,7 @@ runs:
           unset CODEX_ACCESS_TOKEN
           unset CODEX_API_KEY
         fi
+        unset OPENAI_API_KEY
 
         if [[ "$PREFLIGHT" == "true" ]]; then
           set +e
