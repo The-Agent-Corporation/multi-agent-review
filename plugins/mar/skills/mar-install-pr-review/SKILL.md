@@ -39,8 +39,13 @@ Useful options:
 ```sh
 mar pr install-workflow --repo <target-repo> --runner-labels self-hosted,macOS,ARM64,mar
 mar pr install-workflow --repo <target-repo> --action-ref aaron-agent-corporation/multi-agent-review@main
+mar pr install-workflow --repo <target-repo> --sync-secrets
 mar pr install-workflow --repo <target-repo> --force
 ```
+
+Only pass `--sync-secrets` if the user explicitly asked MAR to write repository
+secrets from the central local credential store. Use `--github-repo <owner/name>`
+when the target path cannot be resolved by `gh repo view`.
 
 Only pass `--force` if the user explicitly asked to replace an existing
 `.github/workflows/mar-pr-review.yml` or after showing them that the file already
@@ -59,12 +64,24 @@ After installation:
    - `uses: aaron-agent-corporation/multi-agent-review@main` unless the user pinned
      another ref;
    - `claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` for Claude Code
-     subscription auth.
+     subscription auth;
+   - `codex-access-token: ${{ secrets.CODEX_ACCESS_TOKEN }}` and
+     `codex-api-key: ${{ secrets.CODEX_API_KEY }}` for Codex CLI auth;
+   - `gemini-api-key: ${{ secrets.GEMINI_API_KEY }}` and
+     `google-cloud-project: ${{ secrets.GOOGLE_CLOUD_PROJECT || vars.GOOGLE_CLOUD_PROJECT }}`
+     for Gemini CLI auth;
+   - `xai-api-key: ${{ secrets.XAI_API_KEY }}` and
+     `grok-api-key: ${{ secrets.GROK_API_KEY }}` for Grok CLI auth.
 3. Tell the user the follow-up operational checks:
    - self-hosted runner is online for that repo;
    - vendor CLIs are authenticated on that runner;
    - optional `CLAUDE_CODE_OAUTH_TOKEN` secret is set when Claude Code should run
      from a subscription/OAuth credential instead of an API key;
+   - optional `CODEX_ACCESS_TOKEN` secret is set when Codex should run from a
+     ChatGPT/Codex workspace token instead of cached local auth;
+   - optional `CODEX_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`,
+     `XAI_API_KEY`, and `GROK_API_KEY` secrets or variables are set for the
+     providers/models used by the roster;
    - optional `MAR_NOTIFY_WEBHOOK_URL` and `MAR_NOTIFY_WEBHOOK_TOKEN` secrets are
      set if they want completion notifications to loop back automatically after
      every MAR run;

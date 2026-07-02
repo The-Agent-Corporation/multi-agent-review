@@ -9,6 +9,7 @@ export interface GhResult {
 
 export interface GhRunOptions {
   cwd?: string;
+  input?: string;
 }
 
 export type GhRunner = (args: string[], opts?: GhRunOptions) => Promise<GhResult>;
@@ -28,7 +29,7 @@ async function defaultGhRunner(args: string[], opts: GhRunOptions = {}): Promise
   const { cmd, preArgs } = splitBin(process.env.MAR_GH_BIN ?? "gh");
   const result = await execa(cmd, [...preArgs, ...args], {
     reject: false,
-    stdin: "ignore",
+    ...(opts.input === undefined ? { stdin: "ignore" as const } : { input: opts.input }),
     cleanup: true,
     ...(opts.cwd ? { cwd: opts.cwd } : {}),
   });

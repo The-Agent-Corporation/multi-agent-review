@@ -9,6 +9,8 @@ const DEFAULT_EXAMPLE = [
   "# Repo-local MAR environment.",
   "# Values in MAR.env are local secrets and must not be committed.",
   "CLAUDE_CODE_OAUTH_TOKEN=",
+  "CODEX_ACCESS_TOKEN=",
+  "CODEX_API_KEY=",
   "ANTHROPIC_API_KEY=",
   "GEMINI_API_KEY=",
   "GOOGLE_CLOUD_PROJECT=",

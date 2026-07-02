@@ -61,6 +61,12 @@ jobs:
           pr: ${{ env.PR_SELECTOR }}
           post: ${{ env.MAR_POST_REVIEW }}
           claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          codex-access-token: ${{ secrets.CODEX_ACCESS_TOKEN }}
+          codex-api-key: ${{ secrets.CODEX_API_KEY }}
+          gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
+          google-cloud-project: ${{ secrets.GOOGLE_CLOUD_PROJECT || vars.GOOGLE_CLOUD_PROJECT }}
+          xai-api-key: ${{ secrets.XAI_API_KEY }}
+          grok-api-key: ${{ secrets.GROK_API_KEY }}
           notify-webhook-url: ${{ secrets.MAR_NOTIFY_WEBHOOK_URL }}
           notify-webhook-token: ${{ secrets.MAR_NOTIFY_WEBHOOK_TOKEN }}
           notify-kind: ${{ vars.MAR_NOTIFY_KIND || 'claude-code-channel' }}

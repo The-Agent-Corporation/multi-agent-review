@@ -33,6 +33,14 @@ describe("installPrReviewWorkflow", () => {
     expect(workflow).toContain("uses: aaron-agent-corporation/multi-agent-review@main");
     expect(workflow).toContain("MAR_POST_REVIEW=true");
     expect(workflow).toContain("claude-oauth-token: $" + "{{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}");
+    expect(workflow).toContain("codex-access-token: $" + "{{ secrets.CODEX_ACCESS_TOKEN }}");
+    expect(workflow).toContain("codex-api-key: $" + "{{ secrets.CODEX_API_KEY }}");
+    expect(workflow).toContain("gemini-api-key: $" + "{{ secrets.GEMINI_API_KEY }}");
+    expect(workflow).toContain(
+      "google-cloud-project: $" + "{{ secrets.GOOGLE_CLOUD_PROJECT || vars.GOOGLE_CLOUD_PROJECT }}",
+    );
+    expect(workflow).toContain("xai-api-key: $" + "{{ secrets.XAI_API_KEY }}");
+    expect(workflow).toContain("grok-api-key: $" + "{{ secrets.GROK_API_KEY }}");
     expect(workflow).toContain("notify-webhook-url: $" + "{{ secrets.MAR_NOTIFY_WEBHOOK_URL }}");
     expect(workflow).toContain(
       "notify-target: $" + "{{ secrets.MAR_NOTIFY_TARGET || vars.MAR_NOTIFY_TARGET || 'default' }}",

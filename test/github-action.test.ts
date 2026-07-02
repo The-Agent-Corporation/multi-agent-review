@@ -18,6 +18,12 @@ describe("GitHub Action PR review wrapper", () => {
     expect(action).toContain("notify-target:");
     expect(action).toContain("default: default");
     expect(action).toContain("claude-oauth-token:");
+    expect(action).toContain("codex-access-token:");
+    expect(action).toContain("codex-api-key:");
+    expect(action).toContain("gemini-api-key:");
+    expect(action).toContain("google-cloud-project:");
+    expect(action).toContain("xai-api-key:");
+    expect(action).toContain("grok-api-key:");
     expect(action).toContain("github-token:");
     expect(action).toContain("working-directory: $" + "{{ github.action_path }}");
     expect(action).toContain("uses: actions/checkout@v4");
@@ -35,6 +41,16 @@ describe("GitHub Action PR review wrapper", () => {
     expect(action).toContain("MAR_NOTIFY_KIND: $" + "{{ inputs.notify-kind }}");
     expect(action).toContain("MAR_NOTIFY_TARGET: $" + "{{ inputs.notify-target }}");
     expect(action).toContain("CLAUDE_CODE_OAUTH_TOKEN: $" + "{{ inputs.claude-oauth-token }}");
+    expect(action).toContain("CODEX_ACCESS_TOKEN: $" + "{{ inputs.codex-access-token }}");
+    expect(action).toContain("CODEX_API_KEY: $" + "{{ inputs.codex-api-key }}");
+    expect(action).toContain("GEMINI_API_KEY: $" + "{{ inputs.gemini-api-key }}");
+    expect(action).toContain("GOOGLE_CLOUD_PROJECT: $" + "{{ inputs.google-cloud-project }}");
+    expect(action).toContain("XAI_API_KEY: $" + "{{ inputs.xai-api-key }}");
+    expect(action).toContain("GROK_API_KEY: $" + "{{ inputs.grok-api-key }}");
+    expect(action).toContain("codex login --with-access-token");
+    expect(action).toContain("codex login --with-api-key");
+    expect(action).toContain("unset CODEX_ACCESS_TOKEN");
+    expect(action).toContain("unset CODEX_API_KEY");
     expect(action).toContain("MAR_CONFIG: $" + "{{ github.action_path }}/mar.config.json");
     expect(action).toContain("PREFLIGHT: $" + "{{ inputs.preflight }}");
     expect(action).toContain("gh pr view");
@@ -81,6 +97,14 @@ describe("GitHub Action PR review wrapper", () => {
     expect(workflow).toContain("pr: $" + "{{ env.PR_SELECTOR }}");
     expect(workflow).toContain("post: $" + "{{ env.MAR_POST_REVIEW }}");
     expect(workflow).toContain("claude-oauth-token: $" + "{{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}");
+    expect(workflow).toContain("codex-access-token: $" + "{{ secrets.CODEX_ACCESS_TOKEN }}");
+    expect(workflow).toContain("codex-api-key: $" + "{{ secrets.CODEX_API_KEY }}");
+    expect(workflow).toContain("gemini-api-key: $" + "{{ secrets.GEMINI_API_KEY }}");
+    expect(workflow).toContain(
+      "google-cloud-project: $" + "{{ secrets.GOOGLE_CLOUD_PROJECT || vars.GOOGLE_CLOUD_PROJECT }}",
+    );
+    expect(workflow).toContain("xai-api-key: $" + "{{ secrets.XAI_API_KEY }}");
+    expect(workflow).toContain("grok-api-key: $" + "{{ secrets.GROK_API_KEY }}");
     expect(workflow).toContain("notify-webhook-url: $" + "{{ secrets.MAR_NOTIFY_WEBHOOK_URL }}");
     expect(workflow).toContain(
       "notify-webhook-token: $" + "{{ secrets.MAR_NOTIFY_WEBHOOK_TOKEN }}",

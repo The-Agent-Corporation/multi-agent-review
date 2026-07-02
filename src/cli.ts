@@ -10,12 +10,20 @@ import { runCheckpoint } from "./checkpoint/run.js";
 import { CheckpointVerdict } from "./checkpoint/schema.js";
 import { gateExitCode } from "./checkpoint/verdict.js";
 import { loadConfig, resolveAgent } from "./config.js";
+import {
+  ensureCredentialsFile,
+  importCredentialsFromEnv,
+  loadCredentials,
+  loadEffectiveMarEnv,
+  redactedCredentialReport,
+} from "./env/credentials.js";
 import { ensureMarEnv, loadMarEnv, redactedEnvReport } from "./env/mar-env.js";
 import { assertTerminalModeSupported, type TerminalMode } from "./execution/tmux.js";
 import { assertReviewable } from "./gates.js";
 import { installPrepareCommitMessageNotificationHook } from "./git/notify-hook.js";
 import { installPrReviewWorkflow } from "./github/install-workflow.js";
 import { type NotificationStatus, notifyPullRequestCompletion } from "./github/notify.js";
+import { syncGithubSecrets } from "./github/secrets.js";
 import { installGsdCapability } from "./gsd/install.js";
 import { detectVendors, writeStarterConfig } from "./init.js";
 import { logInvocation } from "./log/invocation.js";
@@ -103,6 +111,9 @@ interface PullRequestInstallWorkflowOptions {
   force?: boolean;
   actionRef?: string;
   runnerLabels?: string;
+  syncSecrets?: boolean;
+  githubRepo?: string;
+  credentialsFile?: string;
 }
 
 interface PreflightOptions {
@@ -111,6 +122,16 @@ interface PreflightOptions {
 
 interface AuthInitOptions {
   repo?: string;
+}
+
+interface AuthCredentialsOptions {
+  file?: string;
+}
+
+interface AuthSyncGithubOptions {
+  repo?: string;
+  githubRepo?: string;
+  credentialsFile?: string;
 }
 
 type CheckpointMode = "required" | "advisory";
@@ -313,7 +334,7 @@ async function loadExecutionEnv(cwd = process.cwd()): Promise<{
 }> {
   const repo = await detectGitRepo(cwd);
   const envRoot = repo?.root ?? cwd;
-  return { repo, env: await loadMarEnv(envRoot), envRoot };
+  return { repo, env: await loadEffectiveMarEnv(envRoot), envRoot };
 }
 
 async function buildExecutionContext(opts: {
@@ -636,6 +657,62 @@ async function runAuthInit(opts: AuthInitOptions = {}): Promise<number> {
   }
 }
 
+async function runAuthCredentialsInit(opts: AuthCredentialsOptions = {}): Promise<number> {
+  try {
+    const result = await ensureCredentialsFile({ file: opts.file });
+    const loaded = await loadCredentials({ file: result.path });
+    const verb = result.created ? "created" : "ready";
+    process.stdout.write(`✓ MAR credential store ${verb} at ${result.path}\n`);
+    const keys = redactedCredentialReport(loaded);
+    if (keys.length > 0) {
+      process.stdout.write(`loaded credentials: ${keys.join(", ")}\n`);
+    }
+    return 0;
+  } catch (err) {
+    process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
+}
+
+async function runAuthCredentialsImportEnv(opts: AuthCredentialsOptions = {}): Promise<number> {
+  try {
+    const result = await importCredentialsFromEnv({ file: opts.file });
+    process.stdout.write(`✓ imported credentials into ${result.path}\n`);
+    if (result.imported.length > 0) {
+      process.stdout.write(`imported keys: ${result.imported.join(", ")}\n`);
+    } else {
+      process.stdout.write("imported keys: none\n");
+    }
+    return 0;
+  } catch (err) {
+    process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
+}
+
+async function runAuthSyncGithub(opts: AuthSyncGithubOptions = {}): Promise<number> {
+  try {
+    const result = await syncGithubSecrets({
+      repoPath: opts.repo,
+      githubRepo: opts.githubRepo,
+      credentialsFile: opts.credentialsFile,
+    });
+    process.stdout.write(`✓ synced MAR credentials to GitHub secrets for ${result.repository}\n`);
+    if (result.set.length > 0) {
+      process.stdout.write(`set secrets: ${result.set.join(", ")}\n`);
+    } else {
+      process.stdout.write("set secrets: none\n");
+    }
+    if (result.skipped.length > 0) {
+      process.stdout.write(`skipped empty keys: ${result.skipped.join(", ")}\n`);
+    }
+    return 0;
+  } catch (err) {
+    process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
+}
+
 /**
  * `mar preflight` — load the roster, run the tiered check, print the status table, and map
  * allPass → exit 0 / any-fail → exit 1 (D-28). `mar preflight` is the EXPLICIT preflight trigger
@@ -859,6 +936,24 @@ async function runPrInstallWorkflow(opts: PullRequestInstallWorkflowOptions = {}
     });
     const verb = result.overwritten ? "updated" : "installed";
     process.stdout.write(`✓ ${verb} MAR PR review workflow at ${result.workflowPath}\n`);
+    if (opts.syncSecrets) {
+      const secrets = await syncGithubSecrets({
+        repoPath: opts.repo,
+        githubRepo: opts.githubRepo,
+        credentialsFile: opts.credentialsFile,
+      });
+      process.stdout.write(
+        `✓ synced MAR credentials to GitHub secrets for ${secrets.repository}\n`,
+      );
+      if (secrets.set.length > 0) {
+        process.stdout.write(`set secrets: ${secrets.set.join(", ")}\n`);
+      } else {
+        process.stdout.write("set secrets: none\n");
+      }
+      if (secrets.skipped.length > 0) {
+        process.stdout.write(`skipped empty keys: ${secrets.skipped.join(", ")}\n`);
+      }
+    }
     process.stdout.write(
       "Next: commit this workflow, confirm a self-hosted runner is online for the repo, then open or update a non-draft same-repo PR.\n",
     );
@@ -1150,7 +1245,7 @@ async function runResume(opts: {
   let execution: ProtocolExecution | undefined;
   try {
     const envRoot = manifest.execution?.sourceRepoRoot ?? process.cwd();
-    const env = await loadMarEnv(envRoot);
+    const env = await loadEffectiveMarEnv(envRoot);
     execution = {
       env,
       terminalMode: manifest.execution?.terminalMode ?? "headless",
@@ -1208,6 +1303,45 @@ export function buildProgram(): Command {
     .option("--repo <path>", "repository path (defaults to detected git root or cwd)")
     .action(async (opts: AuthInitOptions) => {
       process.exitCode = await runAuthInit(opts);
+    });
+
+  const credentials = auth
+    .command("credentials")
+    .description("Manage the central MAR credential store");
+
+  credentials
+    .command("init")
+    .description("Create the central local MAR credential file")
+    .option(
+      "--file <path>",
+      "credential file path (defaults to MAR_CREDENTIALS_FILE or ~/.config/mar/credentials.env)",
+    )
+    .action(async (opts: AuthCredentialsOptions) => {
+      process.exitCode = await runAuthCredentialsInit(opts);
+    });
+
+  credentials
+    .command("import-env")
+    .description("Import known MAR credential variables from the current shell environment")
+    .option(
+      "--file <path>",
+      "credential file path (defaults to MAR_CREDENTIALS_FILE or ~/.config/mar/credentials.env)",
+    )
+    .action(async (opts: AuthCredentialsOptions) => {
+      process.exitCode = await runAuthCredentialsImportEnv(opts);
+    });
+
+  auth
+    .command("sync-github")
+    .description("Set populated MAR credentials as GitHub repository secrets")
+    .option("--repo <path>", "target repository path", ".")
+    .option("--github-repo <owner/name>", "GitHub repository to update (defaults to gh repo view)")
+    .option(
+      "--credentials-file <path>",
+      "credential file path (defaults to MAR_CREDENTIALS_FILE or ~/.config/mar/credentials.env)",
+    )
+    .action(async (opts: AuthSyncGithubOptions) => {
+      process.exitCode = await runAuthSyncGithub(opts);
     });
 
   program
@@ -1374,6 +1508,9 @@ export function buildProgram(): Command {
       "comma-separated runs-on labels for the self-hosted runner",
       "self-hosted",
     )
+    .option("--sync-secrets", "sync populated central MAR credentials to target GitHub secrets")
+    .option("--github-repo <owner/name>", "GitHub repository to update when syncing secrets")
+    .option("--credentials-file <path>", "credential file path to use when syncing secrets")
     .action(async (opts: PullRequestInstallWorkflowOptions) => {
       process.exitCode = await runPrInstallWorkflow(opts);
     });

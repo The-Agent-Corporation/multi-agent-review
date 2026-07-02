@@ -200,11 +200,29 @@ Useful variants:
 mar pr install-workflow --repo /path/to/repo
 mar pr install-workflow --runner-labels self-hosted,macOS,ARM64,mar
 mar pr install-workflow --action-ref aaron-agent-corporation/multi-agent-review@main
+mar pr install-workflow --sync-secrets
 mar pr install-workflow --force
 ```
 
 The installer writes `.github/workflows/mar-pr-review.yml` and refuses to overwrite
 an existing workflow unless `--force` is supplied.
+
+For repeatable auth setup, MAR also has a central local credential store:
+
+```sh
+mar auth credentials init
+mar auth credentials import-env
+mar auth sync-github --repo /path/to/repo
+```
+
+By default the file is `~/.config/mar/credentials.env` (or
+`$MAR_CREDENTIALS_FILE`) and is created with `0600` permissions. Populate it from
+the shell or by hand with the credentials MAR knows how to sync:
+`CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_ACCESS_TOKEN`, `CODEX_API_KEY`,
+`GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `XAI_API_KEY`, `GROK_API_KEY`, and the
+optional notification settings. `mar pr install-workflow --sync-secrets` installs
+the workflow and then writes the populated central credentials to the target
+repository's GitHub Actions secrets through `gh secret set`.
 
 The generated workflow is:
 
@@ -263,6 +281,12 @@ jobs:
           pr: ${{ env.PR_SELECTOR }}
           post: ${{ env.MAR_POST_REVIEW }}
           claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          codex-access-token: ${{ secrets.CODEX_ACCESS_TOKEN }}
+          codex-api-key: ${{ secrets.CODEX_API_KEY }}
+          gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
+          google-cloud-project: ${{ secrets.GOOGLE_CLOUD_PROJECT || vars.GOOGLE_CLOUD_PROJECT }}
+          xai-api-key: ${{ secrets.XAI_API_KEY }}
+          grok-api-key: ${{ secrets.GROK_API_KEY }}
           notify-webhook-url: ${{ secrets.MAR_NOTIFY_WEBHOOK_URL }}
           notify-webhook-token: ${{ secrets.MAR_NOTIFY_WEBHOOK_TOKEN }}
           github-token: ${{ github.token }}
@@ -282,6 +306,13 @@ OAuth token with `claude setup-token` and store it as the target repository secr
 `CLAUDE_CODE_OAUTH_TOKEN`. MAR strips `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`
 from Claude subprocesses so the Claude CLI uses subscription/OAuth credentials
 instead of API-key billing.
+
+For Codex CLI subscription/workspace auth, store `CODEX_ACCESS_TOKEN` and the
+action will run `codex login --with-access-token` on the trusted runner, then unset
+the token before MAR starts. `CODEX_API_KEY` is supported as a fallback through
+`codex login --with-api-key`, but the access-token path is the intended match for
+ChatGPT/Codex subscription usage. Gemini and Grok credentials are passed through as
+`GEMINI_API_KEY`/`GOOGLE_CLOUD_PROJECT` and `XAI_API_KEY`/`GROK_API_KEY`.
 
 ### PR completion notifications
 

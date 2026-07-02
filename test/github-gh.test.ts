@@ -25,6 +25,21 @@ describe("gh wrapper", () => {
     );
   });
 
+  it("passes sensitive input through opts instead of argv", async () => {
+    const calls: Array<{ args: string[]; input?: string }> = [];
+    setGhRunner(async (args, opts) => {
+      calls.push({ args, input: opts?.input });
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    await ghText(["secret", "set", "CODEX_ACCESS_TOKEN"], { input: "super-secret" });
+
+    expect(calls).toEqual([
+      { args: ["secret", "set", "CODEX_ACCESS_TOKEN"], input: "super-secret" },
+    ]);
+    expect(calls[0].args).not.toContain("super-secret");
+  });
+
   it("throws a useful error when gh exits non-zero", async () => {
     setGhRunner(async () => ({ stdout: "", stderr: "not authenticated", exitCode: 1 }));
 
